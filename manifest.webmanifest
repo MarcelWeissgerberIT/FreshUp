@@ -1,0 +1,19 @@
+{
+  "name": "Fresh Up",
+  "short_name": "Fresh Up",
+  "description": "Die App zur smarten Trinkflasche Fresh Up: Tagesziel, Trinkverlauf, LED-Anzeige und Erinnerung alle 30 Minuten.",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1b30",
+  "theme_color": "#0b1b30",
+  "categories": ["health", "lifestyle"],
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "assets/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

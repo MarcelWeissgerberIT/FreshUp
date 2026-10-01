@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fresh Up</title>
+<meta name="description" content="Fresh Up – die App zur smarten Trinkflasche: Tagesziel, Trinkverlauf, LED-Anzeige und Erinnerung alle 30 Minuten.">
+<meta name="theme-color" content="#0b1b30">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fresh Up">
+<link rel="preload" href="assets/fonts/source-sans-3-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="layout">
+
+  <!-- ============================ APP ============================ -->
+  <div class="app-col">
+    <p class="col-label">Fresh Up App</p>
+    <div class="app" id="app">
+
+      <header class="app-head">
+        <div class="app-brand">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5c3.6 4.6 6.5 8.3 6.5 11.7A6.5 6.5 0 0 1 5.5 14.2C5.5 10.8 8.4 7.1 12 2.5Z"/></svg>
+          <span>Fresh Up</span>
+        </div>
+        <button class="demo-chip" id="demoOpen" type="button" aria-controls="demo" aria-expanded="false" hidden>
+          <span class="dot" aria-hidden="true"></span>Demo-Flasche
+        </button>
+      </header>
+
+      <button class="push" id="push" type="button" hidden>
+        <span class="push-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3c3 4 5.5 7 5.5 10A5.5 5.5 0 0 1 6.5 13C6.5 10 9 7 12 3Z"/></svg></span>
+        <span class="push-body">
+          <span class="push-top"><b>Fresh Up</b><small>jetzt</small></span>
+          <span class="push-title" id="pushTitle">Zeit für einen Schluck!</span>
+          <span class="push-text" id="pushText">Du hast schon 30 Minuten nicht mehr getrunken.</span>
+        </span>
+      </button>
+      <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+      <main class="app-body" id="appBody">
+
+        <!-- ===== Home ===== -->
+        <section class="screen" id="screen-home" aria-label="Home">
+          <div class="greet">
+            <p class="greet-date" id="greetDate">Donnerstag, 1. Oktober</p>
+            <h1 class="greet-title" id="greetTitle">Guten Tag</h1>
+          </div>
+
+          <button class="conn-banner" id="connBanner" type="button" data-state="off">
+            <span class="dot" aria-hidden="true"></span>
+            <span class="conn-text" id="connText">Keine Flasche verbunden</span>
+            <span class="chev" aria-hidden="true">›</span>
+          </button>
+
+          <div class="alarm-card" id="alarmCard" hidden>
+            <svg class="bell" viewBox="0 0 48 48" aria-hidden="true">
+              <path d="M24 8a10 10 0 0 0-10 10v8l-4 6h28l-4-6v-8A10 10 0 0 0 24 8Z"/>
+              <path d="M20 36a4 4 0 0 0 8 0"/>
+              <path class="ring" d="M8 14q-3 6 0 12M40 14q3 6 0 12"/>
+            </svg>
+            <h2>Zeit zu trinken!</h2>
+            <p id="alarmSince">Schon 30 Minuten her.</p>
+            <button class="app-btn" id="drinkNowBtn" type="button">Jetzt trinken <span aria-hidden="true">›</span></button>
+          </div>
+
+          <div class="permission-card" id="permCard" hidden>
+            <div>
+              <b>Erinnerungen aufs Handy</b>
+              <small>Erlaube Mitteilungen, damit Fresh Up dich auch erinnert, wenn die Flasche im Rucksack steckt.</small>
+            </div>
+            <div class="perm-actions">
+              <button class="app-btn app-btn-small" id="permBtn" type="button">Erlauben</button>
+              <button class="link-btn" id="permLater" type="button">Später</button>
+            </div>
+          </div>
+
+          <div class="ring-card">
+            <div class="ring-wrap">
+              <svg viewBox="0 0 200 200" class="ring-svg" aria-hidden="true">
+                <circle class="ring-track" cx="100" cy="100" r="82"/>
+                <circle class="ring-fill" id="ringFill" cx="100" cy="100" r="82" pathLength="100" stroke-dasharray="0 100"/>
+              </svg>
+              <div class="ring-center">
+                <svg class="ring-drop" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5c3.6 4.6 6.5 8.3 6.5 11.7A6.5 6.5 0 0 1 5.5 14.2C5.5 10.8 8.4 7.1 12 2.5Z"/></svg>
+                <b id="ringMl">– ml</b>
+                <small>von 750 ml</small>
+              </div>
+            </div>
+            <p class="ring-label" id="ringLabel">In der Flasche</p>
+          </div>
+
+          <button class="card intake-card" id="intakeCard" type="button" aria-label="Tagesziel ändern">
+            <span class="row"><span>Heutige Wasseraufnahme</span><b id="intakeText">0,0 L / 2,0 L</b></span>
+            <span class="bar"><span id="intakeBar"></span></span>
+            <span class="row small"><span id="intakePct">0 % erreicht</span><span id="intakeLeft">Noch 2,0 L</span></span>
+          </button>
+
+          <div class="card row-card">
+            <svg class="row-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <div class="row-text">
+              <b id="reminderTitle">Erinnerung alle 30 Minuten</b>
+              <small id="reminderSub">nächste um –</small>
+            </div>
+            <label class="switch"><input type="checkbox" id="reminderToggle" checked><span class="sr-only">Erinnerung an</span><i aria-hidden="true"></i></label>
+          </div>
+
+          <div class="card quick-card">
+            <div class="quick-head">
+              <b>Ohne Flasche getrunken?</b>
+              <small>Glas oder Becher manuell eintragen</small>
+            </div>
+            <div class="quick-row" role="group" aria-label="Getränk eintragen">
+              <button type="button" class="chip-btn" data-add="150">+150 ml</button>
+              <button type="button" class="chip-btn" data-add="250">+250 ml</button>
+              <button type="button" class="chip-btn" data-add="330">+330 ml</button>
+            </div>
+          </div>
+
+          <button class="card row-card" type="button" data-goto="stats">
+            <svg class="row-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V12M10 20V6M15 20v-9M20 20V9"/></svg>
+            <span class="row-text">
+              <b>Trinkverlauf heute</b>
+              <small id="historySummary">Noch kein Schluck</small>
+            </span>
+            <span class="chev" aria-hidden="true">›</span>
+          </button>
+        </section>
+
+        <!-- ===== Statistik ===== -->
+        <section class="screen" id="screen-stats" aria-label="Statistik" hidden>
+          <h2 class="screen-title">Statistik</h2>
+          <div class="kpis">
+            <div><b id="kpiAvg">–</b><small>Ø pro Tag</small></div>
+            <div><b id="kpiStreak">–</b><small>Ziel-Serie</small></div>
+            <div><b id="kpiBottles">–</b><small>Einweg­flaschen gespart</small></div>
+          </div>
+          <h3 class="sub-title">Heute nach Uhrzeit · ml</h3>
+          <div class="card chart-card">
+            <svg id="hourChart" class="chart" viewBox="0 0 320 160" role="img" aria-label="Trinkmenge pro Stunde heute"></svg>
+          </div>
+          <h3 class="sub-title">Letzte 7 Tage · Liter</h3>
+          <div class="card chart-card">
+            <svg id="weekChart" class="chart" viewBox="0 0 320 170" role="img" aria-label="Trinkmenge der letzten sieben Tage"></svg>
+            <p class="micro" id="exampleNote">Ältere Tage enthalten Beispieldaten.</p>
+          </div>
+          <h3 class="sub-title">Trinkverlauf heute</h3>
+          <ol class="history" id="historyList"></ol>
+        </section>
+
+        <!-- ===== Flasche ===== -->
+        <section class="screen" id="screen-bottle" aria-label="Meine Flasche" hidden>
+          <h2 class="screen-title">Meine Flasche</h2>
+          <div class="card device-card">
+            <div class="device-visual" id="mirrorHost"></div>
+            <dl class="device-stats">
+              <div><dt>Verbindung</dt><dd id="dvConn">–</dd></div>
+              <div><dt>Füllstand</dt><dd id="dvFill">–</dd></div>
+              <div><dt>Anzeige</dt><dd id="dvLed">–</dd></div>
+              <div><dt>Deckel</dt><dd id="dvLid">–</dd></div>
+              <div><dt>Standort</dt><dd id="dvPlace">–</dd></div>
+              <div><dt>Akku</dt><dd id="dvBattery">–</dd></div>
+            </dl>
+          </div>
+          <div class="btn-pair">
+            <button type="button" class="app-btn app-btn-outline" id="findBtn">Flasche finden</button>
+            <button type="button" class="app-btn app-btn-outline" id="connToggleBtn">Verbinden</button>
+          </div>
+
+          <h3 class="sub-title">Gut zu wissen</h3>
+          <div class="tips">
+            <figure class="tip">
+              <img src="assets/img/led-rot.webp" alt="Sockel der Flasche mit rot leuchtender Anzeige" loading="lazy" width="1000" height="1000" style="object-position: 50% 72%">
+              <figcaption><b>Rotes Licht-Signal</b><small>Nach 30 Minuten ohne Schluck blinkt der Sockel rot, solange die Flasche frei steht.</small></figcaption>
+            </figure>
+            <figure class="tip">
+              <img src="assets/img/deckel.webp" alt="Geöffneter Klappdeckel mit Trinköffnung" loading="lazy" width="1000" height="1000" style="object-position: 60% 22%">
+              <figcaption><b>Klappdeckel</b><small>Per Druckknopf öffnen, ca. 110°. Der Dichtungsring hält alles dicht.</small></figcaption>
+            </figure>
+          </div>
+
+          <h3 class="sub-title">Aufbau</h3>
+          <div class="card parts-card">
+            <div class="parts-head">
+              <span class="micro">Tippe auf ein Bauteil</span>
+              <button type="button" class="link-btn" id="explodeBtn" aria-pressed="false">Explosionsansicht</button>
+            </div>
+            <ul class="parts" id="partList">
+              <li><button type="button" data-part="lid"><b>Deckel mit Klappverschluss</b><small>Öffnet per Druckknopf um ca. 110° und schließt sicher.</small></button></li>
+              <li><button type="button" data-part="spout"><b>Trinköffnung</b><small>Bequem trinken, ohne den Deckel abzuschrauben.</small></button></li>
+              <li><button type="button" data-part="ring"><b>Dichtungsring</b><small>Auslaufsicher in Rucksack und Sporttasche.</small></button></li>
+              <li><button type="button" data-part="body"><b>Flaschenkörper mit Skala</b><small>Leicht grau getönt, durchsichtig, Skala 250 / 500 / 750 ml.</small></button></li>
+              <li><button type="button" data-part="base"><b>Elektronik-Einheit mit Anzeige</b><small>Misst den Füllstand, steuert LED-Balken und rotes Signal, funkt per Bluetooth.</small></button></li>
+              <li><button type="button" data-part="foot"><b>Rutschfester Boden</b><small>Sicherer Stand auf Schulbank, Schreibtisch und Hantelbank.</small></button></li>
+            </ul>
+          </div>
+
+          <h3 class="sub-title">Gerät</h3>
+          <div class="card">
+            <table class="specs">
+              <tbody>
+                <tr><th scope="row">Modell</th><td>Fresh Up FU-750</td></tr>
+                <tr><th scope="row">Seriennummer</th><td id="dvSerial">FU-750-2B7C</td></tr>
+                <tr><th scope="row">Firmware</th><td id="dvFw">1.4.2</td></tr>
+                <tr><th scope="row">Material</th><td>BPA-freier Kunststoff</td></tr>
+                <tr><th scope="row">Fassungsvermögen</th><td>750 ml</td></tr>
+                <tr><th scope="row">Maße</th><td>230 mm × Ø 75 mm</td></tr>
+                <tr><th scope="row">Gewicht</th><td>ca. 280 g</td></tr>
+                <tr><th scope="row">Herkunft</th><td>Made in Germany</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ===== Einstellungen ===== -->
+        <section class="screen" id="screen-settings" aria-label="Einstellungen" hidden>
+          <h2 class="screen-title">Einstellungen</h2>
+
+          <h3 class="sub-title">Tagesziel</h3>
+          <div class="card goal-card">
+            <output id="goalOut" for="goalRange">2,0 L</output>
+            <input type="range" id="goalRange" min="1" max="4" step="0.1" value="2" aria-label="Tagesziel in Litern">
+            <div class="preset-row" role="group" aria-label="Vorschläge">
+              <button type="button" class="chip-btn" data-goal="1.5">Schule 1,5 L</button>
+              <button type="button" class="chip-btn" data-goal="2">Alltag 2,0 L</button>
+              <button type="button" class="chip-btn" data-goal="2.5">Sport 2,5 L</button>
+            </div>
+            <ul class="led-legend" id="ledLegend"></ul>
+          </div>
+
+          <h3 class="sub-title">Erinnerung</h3>
+          <div class="card settings">
+            <div class="set-row">
+              <span>Intervall (Minuten)</span>
+              <div class="mini-seg" role="radiogroup" aria-label="Erinnerungsintervall" id="intervalSeg">
+                <button type="button" role="radio" data-interval="15">15</button>
+                <button type="button" role="radio" data-interval="30">30</button>
+                <button type="button" role="radio" data-interval="45">45</button>
+                <button type="button" role="radio" data-interval="60">60</button>
+              </div>
+            </div>
+            <label class="set-row"><span>Rotes Licht-Signal an der Flasche</span><span class="switch"><input type="checkbox" id="setLight" checked><i aria-hidden="true"></i></span></label>
+            <label class="set-row"><span>Benachrichtigung aufs Handy</span><span class="switch"><input type="checkbox" id="setPush" checked><i aria-hidden="true"></i></span></label>
+            <label class="set-row"><span>Ruhezeit 22:00–07:00</span><span class="switch"><input type="checkbox" id="setQuiet" checked><i aria-hidden="true"></i></span></label>
+            <label class="set-row"><span>Signalton</span><span class="switch"><input type="checkbox" id="setSound" checked><i aria-hidden="true"></i></span></label>
+            <div class="set-row">
+              <span>Systemmitteilungen <small id="permState" class="muted">nicht erlaubt</small></span>
+              <button type="button" class="link-btn" id="permBtn2">Erlauben</button>
+            </div>
+          </div>
+
+          <h3 class="sub-title">Flasche</h3>
+          <div class="card settings">
+            <label class="set-row col">
+              <span>LED-Helligkeit <b id="brightOut">80 %</b></span>
+              <input type="range" id="setBright" min="20" max="100" step="5" value="80">
+            </label>
+          </div>
+
+          <h3 class="sub-title">Darstellung</h3>
+          <div class="card settings">
+            <div class="set-row">
+              <span>Farbschema</span>
+              <div class="mini-seg" role="radiogroup" aria-label="Farbschema" id="themeSeg">
+                <button type="button" role="radio" data-theme-opt="system">Auto</button>
+                <button type="button" role="radio" data-theme-opt="light">Hell</button>
+                <button type="button" role="radio" data-theme-opt="dark">Dunkel</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-actions">
+            <button type="button" class="app-btn app-btn-danger" id="resetBtn">App zurücksetzen</button>
+            <p class="micro center">Fresh Up App 1.0 · Fiktives Produkt aus einer Werbekampagne für Schule, Sport und Alltag. Bilder KI-generiert mit OpenArt.</p>
+          </div>
+        </section>
+
+        <!-- ===== Koppeln ===== -->
+        <section class="screen" id="screen-pair" aria-label="Flasche verbinden" hidden>
+          <div class="pair" id="pair" data-state="choose">
+            <div class="radar" aria-hidden="true">
+              <span></span><span></span><span></span>
+              <svg viewBox="0 0 24 24"><path d="M12 2.5c3.6 4.6 6.5 8.3 6.5 11.7A6.5 6.5 0 0 1 5.5 14.2C5.5 10.8 8.4 7.1 12 2.5Z"/></svg>
+            </div>
+            <h2 id="pairTitle">Flasche verbinden</h2>
+            <p id="pairText">Schalte Bluetooth ein und halte deine Fresh Up in die Nähe des Handys.</p>
+
+            <div class="pair-choose">
+              <button type="button" class="pair-option" id="pairBle">
+                <b>Fresh Up suchen</b>
+                <small>Echte Flasche über Bluetooth LE koppeln</small>
+              </button>
+              <button type="button" class="pair-option" id="pairDemo">
+                <b>Demo-Flasche verbinden</b>
+                <small>Simulierte Flasche zum Ausprobieren</small>
+              </button>
+            </div>
+
+            <ul class="device-list">
+              <li>
+                <button type="button" class="device" id="pairDeviceBtn">
+                  <span class="device-name" id="pairName">Fresh Up FU-750-2B7C</span>
+                  <span class="device-meta" id="pairMeta">Signal stark · Akku 86 %</span>
+                  <span class="device-cta">Koppeln</span>
+                </button>
+              </li>
+            </ul>
+
+            <button type="button" class="link-btn" id="pairBack">Zurück</button>
+          </div>
+        </section>
+      </main>
+
+      <nav class="tabbar" id="tabbar" aria-label="App-Navigation">
+        <button type="button" data-goto="home" aria-current="page">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4Z"/></svg><span>Home</span>
+        </button>
+        <button type="button" data-goto="stats">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V12M10 20V6M15 20v-9M20 20V9"/></svg><span>Statistik</span>
+        </button>
+        <button type="button" data-goto="bottle">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6v3H9zM8 6h8l1 3v10a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V9Z"/><path d="M7 15h10"/></svg><span>Flasche</span>
+        </button>
+        <button type="button" data-goto="settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>Einstellungen</span>
+        </button>
+      </nav>
+
+      <!-- ===== Onboarding ===== -->
+      <section class="onboarding" id="onboarding" aria-label="Willkommen" hidden>
+        <div class="ob-step ob-welcome" data-step="0">
+          <img class="ob-hero" src="assets/img/hero.webp" alt="Fresh Up Flasche mit blau leuchtender Anzeige" width="960" height="1200">
+          <div class="ob-content">
+            <p class="ob-kicker">Smarte Trinkflasche · 750 ml</p>
+            <h1 class="ob-title">Fresh Up</h1>
+            <p class="slogan">Schluck für Schluck,<br>bringt dich fit zurück.</p>
+            <p class="ob-text">Deine Flasche erinnert dich alle 30 Minuten ans Trinken: mit rotem Licht-Signal am Sockel und hier in der App.</p>
+            <button type="button" class="app-btn app-btn-wide" data-ob-next>Los geht’s</button>
+            <button type="button" class="link-btn light" data-ob-skip>Überspringen und Demo-Flasche nutzen</button>
+          </div>
+        </div>
+
+        <div class="ob-step" data-step="1" hidden>
+          <p class="ob-progress">Schritt 1 von 3</p>
+          <h2>Wo brauchst du Fresh Up am meisten?</h2>
+          <p class="ob-sub">Daraus schlagen wir dir ein Tagesziel vor.</p>
+          <div class="use-grid" role="radiogroup" aria-label="Einsatzbereich">
+            <button type="button" class="use" role="radio" data-use="schule" data-goal="1.5">
+              <img src="assets/img/schule.webp" alt="" width="1200" height="900">
+              <span><b>Schule</b><small>1,5 L am Tag</small></span>
+            </button>
+            <button type="button" class="use" role="radio" data-use="sport" data-goal="2.5">
+              <img src="assets/img/sport.webp" alt="" width="1200" height="900">
+              <span><b>Sport</b><small>2,5 L am Tag</small></span>
+            </button>
+            <button type="button" class="use" role="radio" data-use="unterwegs" data-goal="2">
+              <img src="assets/img/unterwegs.webp" alt="" width="1200" height="900">
+              <span><b>Unterwegs &amp; Alltag</b><small>2,0 L am Tag</small></span>
+            </button>
+          </div>
+          <button type="button" class="app-btn app-btn-wide" data-ob-next>Weiter</button>
+        </div>
+
+        <div class="ob-step" data-step="2" hidden>
+          <p class="ob-progress">Schritt 2 von 3</p>
+          <h2>Dein Tagesziel</h2>
+          <output class="goal-big" id="obGoalOut" for="obGoal">2,0 L</output>
+          <input type="range" id="obGoal" min="1" max="4" step="0.1" value="2" aria-label="Tagesziel in Litern">
+          <p class="ob-sub">Die vier LED-Balken am Sockel zeigen deinen Fortschritt:</p>
+          <ul class="led-legend" id="obLedLegend"></ul>
+          <button type="button" class="app-btn app-btn-wide" data-ob-next>Weiter</button>
+        </div>
+
+        <div class="ob-step" data-step="3" hidden>
+          <p class="ob-progress">Schritt 3 von 3</p>
+          <h2>Flasche verbinden</h2>
+          <img class="ob-pair-img" src="assets/img/schreibtisch.webp" alt="Fresh Up Flasche neben Smartphone mit Fortschrittsring" width="1200" height="900">
+          <p class="ob-sub">Fresh Up verbindet sich über Bluetooth LE mit deinem Handy. Kein Konto nötig, deine Daten bleiben auf dem Gerät.</p>
+          <button type="button" class="app-btn app-btn-wide" data-ob-finish>Flasche verbinden</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ===================== DEMO-FLASCHE ====================== -->
+  <aside class="demo" id="demo" aria-labelledby="demoHead">
+    <p class="col-label">Demo-Flasche · simuliertes Gerät</p>
+    <div class="demo-panel">
+      <header class="demo-head">
+        <div>
+          <h2 id="demoHead">Fresh Up FU-750-2B7C</h2>
+          <p class="micro" id="demoSub">Bluetooth an · nicht verbunden</p>
+        </div>
+        <button class="icon-btn demo-close" id="demoClose" type="button" aria-label="Demo-Flasche schließen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+
+      <div class="demo-grid">
+        <div class="stage-col">
+          <div class="stage" id="stage" data-location="tisch">
+            <div id="simHost" class="sim-host"></div>
+            <div class="level-readout"><b id="simLevel">500</b> ml</div>
+          </div>
+          <p class="stage-note" id="stageNote" hidden></p>
+        </div>
+
+        <div class="demo-controls">
+          <div class="btn-col">
+            <button class="btn" id="lidBtn" type="button" aria-pressed="false">Deckel öffnen</button>
+            <button class="btn btn-primary" id="drinkBtn" type="button">Schluck trinken</button>
+            <button class="btn" id="refillBtn" type="button">Auffüllen</button>
+          </div>
+          <p class="hint" id="hint">Tippen für einen Schluck, gedrückt halten für mehr.</p>
+
+          <fieldset class="seg-control" id="locationSeg">
+            <legend>Wo ist die Flasche?</legend>
+            <label><input type="radio" name="location" id="loc-tisch" value="tisch" checked><span>Tisch</span></label>
+            <label><input type="radio" name="location" id="loc-rucksack" value="rucksack"><span>Rucksack</span></label>
+            <label><input type="radio" name="location" id="loc-sport" value="sport"><span>Sporttasche</span></label>
+          </fieldset>
+
+          <label class="toggle-row"><span>Bluetooth der Flasche</span><span class="switch"><input type="checkbox" id="radioToggle" checked><i aria-hidden="true"></i></span></label>
+        </div>
+      </div>
+
+      <div class="time-box">
+        <div class="time-main">
+          <div>
+            <span class="micro">Demo-Uhrzeit</span>
+            <b class="clock" id="simClock">12:38</b>
+          </div>
+          <fieldset class="seg-control seg-small" id="speedSeg">
+            <legend class="sr-only">Zeitraffer</legend>
+            <label><input type="radio" name="speed" id="speed-1" value="1"><span>1×</span></label>
+            <label><input type="radio" name="speed" id="speed-60" value="60" checked><span>60×</span></label>
+            <label><input type="radio" name="speed" id="speed-300" value="300"><span>300×</span></label>
+          </fieldset>
+          <button class="icon-btn" id="pauseBtn" type="button" aria-pressed="false" aria-label="Zeit anhalten" title="Zeit anhalten">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-pause" d="M8 5v14M16 5v14"/><path class="i-play" d="M7 5l12 7-12 7Z"/></svg>
+          </button>
+        </div>
+        <div class="timer-row"><span id="timerText">Flaschen-Timer: 7 min bis zur Erinnerung</span></div>
+        <div class="timer-track"><span id="timerBar"></span></div>
+        <button class="btn btn-ghost btn-block" id="triggerBtn" type="button">Erinnerung jetzt auslösen</button>
+      </div>
+
+      <div class="log-box">
+        <div class="log-head">
+          <h3>Bluetooth-Datenverkehr</h3>
+          <span class="micro" id="bufferInfo"></span>
+        </div>
+        <p class="log-legend"><span class="up">↑</span> Flasche an App <span class="down">↓</span> App an Flasche <span>•</span> in der Flasche</p>
+        <ol class="log" id="log"></ol>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script src="js/protocol.js"></script>
+<script src="js/store.js"></script>
+<script src="js/bottle-view.js"></script>
+<script src="js/sim-bottle.js"></script>
+<script src="js/connection.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/demo-panel.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
