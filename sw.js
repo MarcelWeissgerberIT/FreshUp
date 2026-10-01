@@ -1,5 +1,5 @@
 /* Fresh Up – Service Worker: App offline verfügbar machen, Mitteilungen öffnen die App */
-const CACHE = 'freshup-v1';
+const CACHE = 'freshup-v2';
 const ASSETS = [
   './',
   'index.html',
@@ -18,6 +18,7 @@ const ASSETS = [
   'js/charts.js',
   'js/demo-panel.js',
   'js/app.js',
+  'js/bottle3d.js',
   'assets/icons/icon.svg',
   'assets/icons/icon-192.png',
   'assets/icons/icon-512.png',

@@ -6,9 +6,13 @@
   const P = FU.Protocol;
   const U = FU.util;
   const fmt = FU.fmt;
-  const { MIN, CAPACITY } = FU.const;
+  const { MIN, HOUR, DAY } = FU.const;
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+  const SNOOZE_MIN = 10;
+  const LOW_FILL = 60;
+  const LOW_BATTERY = 15;
 
   const sim = (FU.sim = new FU.SimBottle(S.sim));
   let conn = null;
@@ -22,6 +26,7 @@
   let mirrorFindUntil = 0;
   let swReg = null;
   let audioCtx = null;
+  let installPrompt = null;
 
   // zuletzt von der Flasche gemeldete Werte
   const dev = { connected: false, fill: null, lid: false, alert: false, dark: false, battery: null };
@@ -29,6 +34,8 @@
 
   const markDirty = () => { dirty = true; };
   const today = () => U.totalOfDay(FU.clock.now());
+  const nextDue = () => Math.max(S.lastSip + S.settings.interval * MIN, S.snoozeUntil || 0);
+  const tour = (step) => { if (FU.demoPanel && FU.demoPanel.mark) FU.demoPanel.mark(step); };
 
   /* =================== Navigation =================== */
   function go(name) {
@@ -44,15 +51,26 @@
 
   /* =================== Hinweise =================== */
   let toastTimer = null;
-  function toast(text) {
+  function toast(text, action) {
     const t = $('#toast');
-    t.textContent = text;
+    t.textContent = '';
+    const span = document.createElement('span');
+    span.textContent = text;
+    t.appendChild(span);
+    if (action) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'toast-action';
+      b.textContent = action.label;
+      b.addEventListener('click', () => { t.hidden = true; action.run(); });
+      t.appendChild(b);
+    }
     t.hidden = false;
     t.style.animation = 'none';
     void t.offsetWidth;
     t.style.animation = '';
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+    toastTimer = setTimeout(() => { t.hidden = true; }, action ? 5000 : 2600);
   }
 
   let pushTimer = null;
@@ -89,6 +107,12 @@
       if (swReg && swReg.showNotification) swReg.showNotification(title, opts).catch(() => {});
       else new Notification(title, opts);
     } catch (e) { /* ignorieren */ }
+  }
+  function setBadge(on) {
+    try {
+      if (on && navigator.setAppBadge) navigator.setAppBadge(1).catch(() => {});
+      else if (!on && navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+    } catch (e) { /* nicht unterstützt */ }
   }
   function chime() {
     try {
@@ -136,17 +160,19 @@
     autoReconnect = c.kind === 'demo';
     await c.syncTime(FU.clock.now());
     await c.writeConfig(config());
+    if (S.snoozeUntil > FU.clock.now()) c.command(P.CMD.SNOOZE, Math.ceil((S.snoozeUntil - FU.clock.now()) / MIN));
     lastBars = -1;
     pushProgress();
     FU.store.save();
     markDirty();
+    if (c.kind === 'demo') setTimeout(maybeCoach, 1600);
   }
 
   function onDisconnected(reason) {
     dev.connected = false;
     conn = null;
     toast('Verbindung zur Flasche verloren');
-    if (reason) $('#connText').title = reason;
+    if (reason) $('#connBanner').title = reason;
     markDirty();
   }
 
@@ -184,6 +210,9 @@
     $('#pairBack').textContent = state === 'choose' || state === 'error' ? 'Zurück' : 'Abbrechen';
     if (title) $('#pairTitle').textContent = title;
     if (text != null) $('#pairText').textContent = text;
+    const sup = FU.BleConnection.supported();
+    $('#pairBle').disabled = !sup;
+    $('#pairBleSub').textContent = sup ? 'Echte Flasche über Bluetooth LE koppeln' : 'In diesem Browser nicht verfügbar – Chrome oder Edge nutzen';
   }
 
   let pairPick = null;
@@ -208,7 +237,6 @@
     go('pair');
     if (kind === 'ble' && !FU.BleConnection.supported()) {
       setPair('error', 'Bluetooth nicht verfügbar', 'Dieser Browser unterstützt kein Web Bluetooth. Öffne Fresh Up in Chrome oder Edge (Android, Windows, macOS) – oder verbinde die Demo-Flasche.');
-      setTimeout(() => { if ($('#pair').dataset.state === 'error') setPair('choose', 'Flasche verbinden'); }, 5000);
       return;
     }
     busy = true;
@@ -250,24 +278,62 @@
     S.entries.push(e);
     if (S.entries.length > 1 && S.entries[S.entries.length - 2].t > t) S.entries.sort((a, b) => a.t - b.t);
     if (t > S.lastSip) S.lastSip = t;
+    S.snoozeUntil = 0;
     clearReminder();
     pushProgress();
     checkGoal();
     FU.store.save();
     markDirty();
+    return e;
+  }
+
+  function dropEntry(e) {
+    const i = S.entries.indexOf(e);
+    if (i < 0) return false;
+    S.entries.splice(i, 1);
+    pushProgress();
+    FU.store.save();
+    markDirty();
+    return true;
+  }
+  function restoreEntry(e) {
+    S.entries.push(e);
+    S.entries.sort((a, b) => a.t - b.t);
+    pushProgress();
+    FU.store.save();
+    markDirty();
+  }
+  function removeEntry(e) {
+    if (!dropEntry(e)) return;
+    toast('Eintrag gelöscht (' + e.ml + ' ml)', { label: 'Rückgängig', run: () => restoreEntry(e) });
   }
 
   function onSip({ ml, t, seq }) {
     // Doppelte Meldungen (z. B. nach Wiederverbindung) anhand Zeit + laufender Nummer erkennen
     if (S.entries.some((e) => e.src === 'bottle' && e.t === t && (seq == null || e.seq === seq))) return;
     addEntry(t, ml, 'bottle', seq);
+    celebrateSip(ml);
     toast('+' + ml + ' ml erkannt');
+    tour('sip');
   }
 
   function addManual(ml) {
-    addEntry(FU.clock.now(), ml, 'manual');
+    const e = addEntry(FU.clock.now(), ml, 'manual');
     if (conn && dev.connected) conn.command(P.CMD.RESET_TIMER);
-    toast('+' + ml + ' ml eingetragen');
+    celebrateSip(ml);
+    toast('+' + ml + ' ml eingetragen', { label: 'Rückgängig', run: () => dropEntry(e) });
+  }
+
+  function celebrateSip(ml) {
+    const f = $('#ringFloat');
+    f.textContent = '+' + ml + ' ml';
+    f.classList.remove('go');
+    void f.offsetWidth;
+    f.classList.add('go');
+    const w = $('#ringWrap');
+    w.classList.remove('pulse');
+    void w.offsetWidth;
+    w.classList.add('pulse');
   }
 
   function pushProgress() {
@@ -278,11 +344,27 @@
     }
   }
 
+  function streakDays(now) {
+    const start = U.startOfDay(now);
+    let n = U.totalOfDay(now) >= S.goal ? 1 : 0;
+    for (let i = 1; i < 14; i++) {
+      if (U.totalOfDay(start - i * DAY + 12 * HOUR) >= S.goal) n++;
+      else break;
+    }
+    return n;
+  }
+
   function checkGoal() {
     const key = U.startOfDay(FU.clock.now());
     if (today() >= S.goal && goalToastDay !== key) {
       goalToastDay = key;
-      setTimeout(() => toast('Tagesziel erreicht. Stark!'), 900);
+      setTimeout(() => {
+        toast('Tagesziel erreicht. Stark!');
+        const g = $('#goalCard');
+        g.classList.remove('celebrate');
+        void g.offsetWidth;
+        g.classList.add('celebrate');
+      }, 700);
     }
   }
 
@@ -290,19 +372,22 @@
   function clearReminder() {
     rem.active = false;
     $('#push').hidden = true;
+    setBadge(false);
   }
 
   function checkReminder(now) {
     const st = S.settings;
-    const due = S.lastSip + st.interval * MIN;
+    const due = nextDue();
     const quiet = st.quiet && U.isQuiet(now);
-    if (!st.reminders || quiet || now < due) {
+    if (!S.onboarded || !st.reminders || quiet || now < due) {
       if (rem.active) { clearReminder(); markDirty(); }
       return;
     }
     if (!rem.active) {
       rem.active = true;
       rem.lastPush = now;
+      setBadge(true);
+      tour('reminder');
       fire(now);
       markDirty();
     } else if (now - rem.lastPush >= st.interval * MIN) {
@@ -315,8 +400,11 @@
     const st = S.settings;
     if (!st.push) return;
     const mins = Math.round((now - S.lastSip) / MIN);
+    const lowFill = dev.connected && dev.fill != null && dev.fill <= LOW_FILL;
     const title = 'Zeit für einen Schluck!';
-    const body = 'Du hast schon ' + mins + ' Minuten nicht mehr getrunken.' + (dev.connected && dev.dark ? ' Deine Flasche steckt in der Tasche.' : '');
+    const body = lowFill
+      ? 'Deine Flasche ist fast leer – füll sie auf und trink einen Schluck.'
+      : 'Du hast schon ' + mins + ' Minuten nicht mehr getrunken.' + (dev.connected && dev.dark ? ' Deine Flasche steckt in der Tasche.' : '');
     banner(title, body);
     if (document.visibilityState === 'hidden') systemNotify(title, body);
     if (st.sound) chime();
@@ -324,14 +412,41 @@
     if (navigator.vibrate && active) { try { navigator.vibrate([120, 60, 120]); } catch (e) { /* ignorieren */ } }
   }
 
+  function snooze() {
+    const now = FU.clock.now();
+    S.snoozeUntil = now + SNOOZE_MIN * MIN;
+    clearReminder();
+    if (conn && dev.connected) conn.command(P.CMD.SNOOZE, SNOOZE_MIN);
+    FU.store.save();
+    markDirty();
+    toast('Erinnerung verschoben auf ' + fmt.time(S.snoozeUntil));
+  }
+
   function triggerReminder() {
     const now = FU.clock.now();
     S.lastSip = now - S.settings.interval * MIN;
+    S.snoozeUntil = 0;
     sim.s.lastSip = Math.min(sim.s.lastSip, S.lastSip);
+    sim.s.snoozeUntil = 0;
     rem.active = false;
     if (S.settings.quiet && U.isQuiet(now)) toast('Ruhezeit aktiv: In den Einstellungen ausschalten.');
     markDirty();
   }
+
+  /* =================== Hilfen =================== */
+  function maybeCoach() {
+    if (S.coachSeen || S.device.kind !== 'demo' || !S.onboarded) return;
+    if (!window.matchMedia('(max-width: 879px)').matches) return;
+    $('#coach').hidden = false;
+  }
+  function closeCoach() {
+    S.coachSeen = true;
+    $('#coach').hidden = true;
+    FU.store.save();
+  }
+
+  const isStandalone = () => (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
   /* =================== Darstellung =================== */
   function applyTheme() {
@@ -369,18 +484,62 @@
     ul.appendChild(li);
   }
 
+  // Flaschen-Karte auf Home
   function renderConn() {
     const b = $('#connBanner');
-    let state, text;
-    if (busy) { state = 'busy'; text = 'Verbinde mit der Flasche …'; }
-    else if (dev.connected) {
-      state = 'on';
-      text = 'Verbunden · ' + (S.device.kind === 'demo' ? 'Demo-Flasche' : S.device.name) + (dev.battery != null ? ' · Akku ' + dev.battery + ' %' : '');
-    } else if (S.device.kind) { state = 'off'; text = 'Nicht verbunden · Tippen zum Verbinden'; }
-    else { state = 'off'; text = 'Keine Flasche verbunden · Jetzt koppeln'; }
+    let state, sub, status;
+    const title = S.device.kind === 'demo' ? 'Demo-Flasche' : S.device.kind === 'ble' ? S.device.name : 'Keine Flasche verbunden';
+    if (busy) { state = 'busy'; status = 'Verbinde …'; }
+    else if (dev.connected) { state = 'on'; status = 'Verbunden' + (dev.battery != null ? ' · ' + dev.battery + ' %' : ''); }
+    else { state = 'off'; status = S.device.kind ? 'Nicht verbunden' : 'Koppeln'; }
+    if (dev.fill != null) sub = Math.round(dev.fill) + ' ml in der Flasche' + (dev.lid ? ' · Deckel offen' : '') + (dev.connected ? '' : ' · zuletzt gemeldet');
+    else sub = S.device.kind ? 'Tippe hier, um die Flasche zu verbinden' : 'Tippe hier, um deine Fresh Up zu koppeln';
     b.dataset.state = state;
-    $('#connText').textContent = text;
+    $('#bcTitle').textContent = title;
+    $('#bcSub').textContent = sub;
+    $('#connText').textContent = status;
+    $('#miniFill').style.height = (dev.fill == null ? 0 : Math.max(0, Math.min(1, dev.fill / 750)) * 100) + '%';
     $('#demoOpen').hidden = S.device.kind === 'ble';
+  }
+
+  function renderHint() {
+    const card = $('#hintCard');
+    let kind = null, title = '', text = '';
+    if (dev.connected && dev.battery != null && dev.battery <= LOW_BATTERY) {
+      kind = 'battery';
+      title = 'Akku schwach · ' + dev.battery + ' %';
+      text = 'Lade deine Fresh Up bald auf, damit Licht-Signal und Bluetooth weiterlaufen.';
+    } else if (dev.connected && dev.fill != null && dev.fill <= LOW_FILL) {
+      kind = 'empty';
+      title = dev.fill < 5 ? 'Flasche leer' : 'Flasche fast leer · ' + Math.round(dev.fill) + ' ml';
+      text = 'Füll sie auf, damit der nächste Schluck bereitsteht.';
+    }
+    card.hidden = !kind;
+    if (kind) {
+      card.dataset.kind = kind;
+      $('#hintTitle').textContent = title;
+      $('#hintText').textContent = text;
+    }
+  }
+
+  function renderTimeline(now) {
+    const el = $('#timeline');
+    el.textContent = '';
+    const start = U.startOfDay(now) + 6 * HOUR;
+    const span = 16 * HOUR;
+    const pos = (t) => Math.max(0, Math.min(100, ((t - start) / span) * 100));
+    U.entriesOfDay(now).forEach((e) => {
+      const d = document.createElement('i');
+      d.className = 'tl-dot' + (e.src === 'manual' ? ' manual' : '');
+      const size = 7 + Math.min(9, e.ml / 40);
+      d.style.left = pos(e.t) + '%';
+      d.style.width = d.style.height = size + 'px';
+      el.appendChild(d);
+    });
+    const n = document.createElement('i');
+    n.className = 'tl-now';
+    n.style.left = pos(now) + '%';
+    el.appendChild(n);
   }
 
   function renderHome(now) {
@@ -389,49 +548,60 @@
     $('#greetDate').textContent = fmt.date(now);
 
     // Alarm
-    const alarm = $('#alarmCard');
-    alarm.hidden = !rem.active;
+    $('#alarmCard').hidden = !rem.active;
     if (rem.active) {
       const mins = Math.round((now - S.lastSip) / MIN);
       $('#alarmSince').textContent = mins < 60 ? 'Schon ' + mins + ' Minuten her.' : 'Schon ' + fmt.duration(now - S.lastSip) + ' her.';
     }
+    renderHint();
+    const reached = today() >= S.goal;
+    $('#goalCard').hidden = !(reached && S.goalCardHidden !== U.startOfDay(now));
+    if (reached) {
+      const st = streakDays(now);
+      $('#goalText').textContent = fmt.liters(today()) + ' getrunken' + (st > 1 ? ' · ' + st + ' Tage in Folge' : '');
+    }
     $('#permCard').hidden = !(S.onboarded && permState() === 'default' && !S.permDismissed);
 
-    // Ring: Inhalt der Flasche
-    const fill = dev.fill;
-    $('#ringMl').textContent = fill == null ? '– ml' : Math.round(fill) + ' ml';
-    $('#ringFill').setAttribute('stroke-dasharray', (fill == null ? 0 : (fill / CAPACITY) * 100).toFixed(1) + ' 100');
-    $('#ringLabel').textContent = fill == null ? 'Füllstand erscheint nach dem Verbinden' : 'In der Flasche' + (dev.lid ? ' · Deckel offen' : '') + (dev.connected ? '' : ' · zuletzt gemeldet');
-
-    // Tagesaufnahme
+    // Tagesziel
     const total = today();
     const pct = total / S.goal;
-    $('#intakeText').textContent = fmt.liters(total) + ' / ' + fmt.liters(S.goal);
-    $('#intakeBar').style.width = Math.min(100, pct * 100) + '%';
+    $('#ringFill').setAttribute('stroke-dasharray', Math.min(100, pct * 100).toFixed(1) + ' 100');
+    $('#ringWrap').classList.toggle('done', pct >= 1);
+    $('#ringValue').textContent = fmt.liters(total);
+    $('#ringGoal').textContent = 'von ' + fmt.liters(S.goal);
     $('#intakePct').textContent = fmt.pct(pct) + ' erreicht';
     $('#intakeLeft').textContent = total >= S.goal ? 'Ziel geschafft' : 'Noch ' + fmt.liters(S.goal - total);
 
-    // Erinnerung
+    // Nächster Schluck
     const st = S.settings;
+    const due = nextDue();
+    let state, text;
+    if (!st.reminders) { state = 'off'; text = 'Erinnerung ausgeschaltet'; }
+    else if (st.quiet && U.isQuiet(now)) { state = 'off'; text = 'Ruhezeit bis 07:00 Uhr'; }
+    else if (rem.active) { state = 'due'; text = 'Jetzt ist ein Schluck fällig'; }
+    else if (S.snoozeUntil && S.snoozeUntil >= due && S.snoozeUntil > now) { state = 'snooze'; text = 'Verschoben · Erinnerung um ' + fmt.time(due); }
+    else { state = 'ok'; text = 'Nächster Schluck in ' + fmt.duration(due - now); }
+    $('#nextPill').dataset.state = state;
+    $('#nextText').textContent = text;
+
+    // Erinnerung (Kanäle)
     $('#reminderTitle').textContent = 'Erinnerung alle ' + st.interval + ' Minuten';
     $('#reminderToggle').checked = st.reminders;
-    let sub;
-    const due = S.lastSip + st.interval * MIN;
-    if (!st.reminders) sub = 'ausgeschaltet';
-    else if (st.quiet && U.isQuiet(now)) sub = 'Ruhezeit bis 07:00 Uhr';
-    else if (rem.active) sub = 'jetzt fällig';
-    else sub = 'nächste um ' + fmt.time(due) + ' · in ' + fmt.duration(due - now);
-    $('#reminderSub').textContent = sub;
+    $('#reminderSub').textContent = !st.reminders ? 'ausgeschaltet'
+      : st.light && st.push ? 'Rotes Licht an der Flasche + Mitteilung aufs Handy'
+        : st.light ? 'Nur rotes Licht an der Flasche'
+          : st.push ? 'Nur Mitteilung aufs Handy' : 'Licht und Mitteilung sind aus';
 
     const list = U.entriesOfDay(now);
     $('#historySummary').textContent = list.length ? list.length + (list.length === 1 ? ' Schluck' : ' Schlucke') + ' · zuletzt ' + fmt.time(list[list.length - 1].t) : 'Heute noch kein Schluck';
+    renderTimeline(now);
   }
 
   function renderStats(now) {
     const todayStart = U.startOfDay(now);
     const days = [];
     for (let i = 6; i >= 0; i--) {
-      const t = todayStart - i * FU.const.DAY + 12 * FU.const.HOUR;
+      const t = todayStart - i * DAY + 12 * HOUR;
       days.push({ ml: U.totalOfDay(t), label: i === 0 ? 'Heute' : fmt.weekday(t), today: i === 0 });
     }
     FU.charts.hours($('#hourChart'), U.entriesOfDay(now), now);
@@ -439,8 +609,7 @@
 
     const prev = days.slice(0, 6).filter((d) => d.ml > 0);
     $('#kpiAvg').textContent = prev.length ? fmt.liters(prev.reduce((s, d) => s + d.ml, 0) / prev.length) : fmt.liters(days[6].ml);
-    let streak = days[6].ml >= S.goal ? 1 : 0;
-    for (let i = 5; i >= 0 && days[i].ml >= S.goal; i--) streak++;
+    const streak = streakDays(now);
     $('#kpiStreak').textContent = streak + (streak === 1 ? ' Tag' : ' Tage');
     const all = S.entries.reduce((s, e) => s + e.ml, 0);
     $('#kpiBottles').textContent = Math.floor(all / 500);
@@ -452,16 +621,19 @@
     const list = U.entriesOfDay(now).slice().reverse();
     if (!list.length) {
       const li = document.createElement('li');
+      li.className = 'empty-row';
       li.innerHTML = '<span class="empty">Heute noch kein Schluck</span>';
-      li.style.gridTemplateColumns = '1fr';
       ol.appendChild(li);
     }
     list.forEach((e) => {
       const li = document.createElement('li');
-      li.innerHTML = '<time></time><span class="src"></span><span class="amt"></span>';
+      li.innerHTML = '<time></time><span class="src"></span><span class="amt"></span><button type="button" class="del"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
       li.children[0].textContent = fmt.time(e.t);
       li.children[1].textContent = e.src === 'manual' ? 'Manuell eingetragen' : 'Aus der Flasche' + (e.ex ? ' (Beispiel)' : '');
       li.children[2].textContent = '+' + e.ml + ' ml';
+      const del = li.children[3];
+      del.setAttribute('aria-label', 'Eintrag von ' + fmt.time(e.t) + ' löschen');
+      del.addEventListener('click', () => removeEntry(e));
       ol.appendChild(li);
     });
   }
@@ -481,7 +653,9 @@
     led.classList.toggle('alert', mode === 'alert');
     $('#dvLid').textContent = dev.connected ? (dev.lid ? 'offen' : 'geschlossen') : '–';
     $('#dvPlace').textContent = dev.connected ? (dev.dark ? 'In einer Tasche (dunkel)' : 'Steht frei (hell)') : '–';
-    $('#dvBattery').textContent = dev.battery == null ? '–' : dev.battery + ' %';
+    const bat = $('#dvBattery');
+    bat.textContent = dev.battery == null ? '–' : dev.battery + ' %';
+    bat.classList.toggle('alert', dev.battery != null && dev.battery <= LOW_BATTERY);
     $('#dvSerial').textContent = S.device.id || '–';
     $('#findBtn').disabled = !dev.connected;
     const ct = $('#connToggleBtn');
@@ -506,6 +680,12 @@
     const ps = permState();
     $('#permState').textContent = { granted: 'erlaubt', denied: 'blockiert (Browser-Einstellungen)', default: 'noch nicht erlaubt', unsupported: 'nicht unterstützt' }[ps];
     $('#permBtn2').hidden = ps !== 'default';
+    // Installation
+    const ib = $('#installBtn');
+    if (isStandalone()) { $('#installText').textContent = 'Fresh Up ist installiert'; ib.hidden = true; }
+    else if (installPrompt) { $('#installText').textContent = 'Als App auf dem Startbildschirm, auch offline'; ib.hidden = false; }
+    else if (isIOS()) { $('#installText').textContent = 'In Safari: Teilen → „Zum Home-Bildschirm“'; ib.hidden = true; }
+    else { $('#installText').textContent = 'Im Browser-Menü „App installieren“ wählen'; ib.hidden = true; }
   }
 
   function render() {
@@ -532,6 +712,12 @@
   }
   function obFinish(pairNow) {
     S.onboarded = true;
+    // Die erste Erinnerung kommt drei Minuten nach dem Einrichten
+    const now = FU.clock.now();
+    if (now - S.lastSip > (S.settings.interval - 3) * MIN) {
+      S.lastSip = now - (S.settings.interval - 3) * MIN;
+      sim.s.lastSip = Math.max(sim.s.lastSip, S.lastSip);
+    }
     $('#onboarding').hidden = true;
     FU.store.save();
     if (pairNow) openPair();
@@ -558,11 +744,15 @@
       else if (dev.connected) toast('Trink einen Schluck – Fresh Up erkennt ihn automatisch.');
       else toast('Verbinde deine Flasche, damit Schlucke erkannt werden.');
     });
+    $('#snoozeBtn').addEventListener('click', snooze);
     $('#reminderToggle').addEventListener('change', (e) => { S.settings.reminders = e.target.checked; syncConfig(); });
     $$('[data-add]').forEach((b) => b.addEventListener('click', () => addManual(Number(b.dataset.add))));
-    $('#intakeCard').addEventListener('click', () => go('settings'));
     $('#permBtn').addEventListener('click', requestPermission);
+    $('#permLater').addEventListener('click', () => { S.permDismissed = true; FU.store.save(); markDirty(); });
+    $('#goalClose').addEventListener('click', () => { S.goalCardHidden = U.startOfDay(FU.clock.now()); FU.store.save(); markDirty(); });
     $('#push').addEventListener('click', () => { $('#push').hidden = true; go('home'); });
+    $('#coachOk').addEventListener('click', closeCoach);
+    $('#demoOpen').addEventListener('click', () => { if (!$('#coach').hidden) closeCoach(); });
 
     // Flasche
     $('#findBtn').addEventListener('click', () => {
@@ -600,6 +790,13 @@
     $('#setBright').addEventListener('change', syncConfig);
     $$('#themeSeg button').forEach((b) => b.addEventListener('click', () => { S.settings.theme = b.dataset.themeOpt; applyTheme(); FU.store.save(); markDirty(); }));
     $('#permBtn2').addEventListener('click', requestPermission);
+    $('#installBtn').addEventListener('click', async () => {
+      if (!installPrompt) return;
+      installPrompt.prompt();
+      try { await installPrompt.userChoice; } catch (e) { /* abgebrochen */ }
+      installPrompt = null;
+      markDirty();
+    });
     const reset = $('#resetBtn');
     let resetTimer = null;
     reset.addEventListener('click', () => {
@@ -624,7 +821,6 @@
       if (pairPick) { pairPick.reject(new Error('Abgebrochen')); pairPick = null; }
       go('home');
     });
-    $('#permLater').addEventListener('click', () => { S.permDismissed = true; FU.store.save(); markDirty(); });
 
     // Onboarding
     $$('[data-ob-next]').forEach((b) => b.addEventListener('click', () => obShow(obStep + 1)));
@@ -641,6 +837,10 @@
       legend($('#obLedLegend'));
     });
 
+    // Installation (Chrome/Edge/Android)
+    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; markDirty(); });
+    window.addEventListener('appinstalled', () => { installPrompt = null; toast('Fresh Up ist installiert'); markDirty(); });
+
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') FU.store.saveNow(); });
     window.addEventListener('pagehide', () => FU.store.saveNow());
   }
@@ -651,7 +851,9 @@
   let lastSave = 0;
   function loop() {
     const t = performance.now();
-    FU.clock.advance(Math.min(1000, t - lastReal));
+    const dt = t - lastReal;
+    // Im Hintergrund läuft die Zeit normal weiter; sichtbar begrenzt, damit der Zeitraffer nicht springt
+    FU.clock.advance(document.visibilityState === 'hidden' ? dt : Math.min(1000, dt));
     lastReal = t;
     const now = FU.clock.now();
     sim.tick(now);
@@ -659,7 +861,9 @@
     pushProgress();
     if (autoReconnect && !dev.connected && !busy && S.device.kind === 'demo' && sim.s.radio) reconnectDemo(false);
     FU.demoPanel.tick(now);
-    if (dirty || t - lastRender > 1000 || (screen === 'bottle' && t < mirrorFindUntil + 300)) {
+    // Listen und Formulare nur bei Änderungen neu zeichnen (sonst gehen Klicks verloren)
+    const periodic = screen === 'home' || screen === 'bottle';
+    if (dirty || (periodic && t - lastRender > 1000) || (screen === 'bottle' && t < mirrorFindUntil + 300)) {
       dirty = false;
       lastRender = t;
       render();
@@ -671,6 +875,26 @@
   function start() {
     applyTheme();
     mirror = new FU.BottleView($('#mirrorHost'), { bags: false });
+    const upgradeMirror = () => {
+      if (!FU.Bottle3D || !FU.Bottle3D.supported() || mirror.is3d) return;
+      try {
+        const host = $('#mirrorHost');
+        host.classList.add('is-3d');
+        const m3 = new FU.Bottle3D(host, { bags: false, backdrop: 'card' });
+        m3.is3d = true;
+        const ex = $('#explodeBtn').getAttribute('aria-pressed') === 'true';
+        mirror = m3;
+        mirror.setExploded(ex);
+        const sel = document.querySelector('#partList button[aria-pressed="true"]');
+        mirror.highlight(sel ? sel.dataset.part : null);
+        markDirty();
+      } catch (e) {
+        $('#mirrorHost').classList.remove('is-3d');
+        mirror = new FU.BottleView($('#mirrorHost'), { bags: false });
+      }
+    };
+    if (FU.Bottle3D) upgradeMirror();
+    else window.addEventListener('fu:3d-ready', upgradeMirror, { once: true });
     FU.demoPanel.init(sim, { triggerReminder });
     bind();
     if (today() >= S.goal) goalToastDay = U.startOfDay(FU.clock.now());
@@ -689,6 +913,6 @@
     setInterval(loop, 200);
   }
 
-  FU.app = { go, toast, triggerReminder };
+  FU.app = { go, toast, triggerReminder, snooze };
   start();
 })();

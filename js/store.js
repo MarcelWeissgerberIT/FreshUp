@@ -56,7 +56,7 @@
         t += 62 * MIN + (k % 3) * 9 * MIN;
       }
     });
-    const lastSip = now - 23 * MIN;
+    const lastSip = now - 26 * MIN;
     const share = Math.max(0, Math.min(1, (now - (today + 7 * HOUR)) / (15 * HOUR)));
     const target = Math.round((goal * share * 0.95) / 10) * 10;
     const todays = [];
@@ -85,9 +85,12 @@
       settings: { reminders: true, interval: 30, light: true, push: true, quiet: true, sound: true, brightness: 80, theme: 'system' },
       device: { kind: null, id: 'FU-750-2B7C', name: 'Fresh Up FU-750-2B7C', firmware: '1.4.2' },
       entries,
-      lastSip: last ? last.t : now - 23 * MIN,
-      clock: { t: now, speed: 60, paused: false },
-      sim: { fill: 500, lid: false, location: 'tisch', battery: 86, radio: true, buffer: [], bars: 0, lastSip: last ? last.t : now - 23 * MIN }
+      lastSip: last ? last.t : now - 26 * MIN,
+      snoozeUntil: 0,
+      coachSeen: false,
+      goalCardHidden: 0,
+      clock: { t: now, speed: 1, paused: false },
+      sim: { fill: 500, lid: false, location: 'tisch', battery: 86, radio: true, buffer: [], bars: 0, lastSip: last ? last.t : now - 26 * MIN, snoozeUntil: 0 }
     };
   }
 
@@ -99,12 +102,15 @@
       const s = JSON.parse(raw);
       if (!s || s.v !== 1) return defaults();
       const d = defaults();
-      return Object.assign(d, s, {
+      const merged = Object.assign(d, s, {
         settings: Object.assign(d.settings, s.settings),
         device: Object.assign(d.device, s.device),
         clock: Object.assign(d.clock, s.clock),
         sim: Object.assign(d.sim, s.sim)
       });
+      // Die Zeit läuft weiter, während die App geschlossen ist (Abstand zur echten Uhr bleibt erhalten)
+      if (typeof s.clock.offset === 'number') merged.clock.t = Date.now() + s.clock.offset;
+      return merged;
     } catch (e) {
       return defaults();
     }
@@ -124,6 +130,7 @@
       // Einträge älter als 14 Tage verwerfen
       const cutoff = startOfDay(state.clock.t) - 14 * DAY;
       state.entries = state.entries.filter((e) => e.t >= cutoff);
+      state.clock.offset = state.clock.t - Date.now();
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (e) { /* Speicher nicht verfügbar – App läuft trotzdem */ }
   }
@@ -143,9 +150,27 @@
     advance(realMs) {
       if (this.realtime()) { state.clock.t = Date.now(); return; }
       if (state.clock.paused) return;
-      state.clock.t += realMs * state.clock.speed;
+      // Zeitraffer nur, solange die App sichtbar ist
+      const speed = document.visibilityState === 'hidden' ? 1 : state.clock.speed;
+      state.clock.t += realMs * speed;
     },
-    jump(ms) { state.clock.t += ms; }
+    offset() { return state.clock.t - Date.now(); },
+    // Demo-Uhr auf die echte Uhrzeit stellen; simulierte Zukunft wird verworfen
+    toRealtime() {
+      const real = Date.now();
+      if (state.clock.t > real) {
+        state.entries = state.entries.filter((e) => e.t <= real);
+        state.sim.buffer = state.sim.buffer.filter((b) => b.t <= real);
+        const last = state.entries.length ? state.entries[state.entries.length - 1].t : real - 10 * MIN;
+        if (state.lastSip > real) state.lastSip = last;
+        if (state.sim.lastSip > real) state.sim.lastSip = last;
+        state.snoozeUntil = 0;
+        state.sim.snoozeUntil = 0;
+      }
+      state.clock.t = real;
+      state.clock.speed = 1;
+      state.clock.paused = false;
+    }
   };
 
   /* ---------- Abgeleitete Werte ---------- */

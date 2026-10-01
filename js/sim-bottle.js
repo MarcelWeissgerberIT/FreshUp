@@ -23,6 +23,7 @@
     }
 
     get config() { return this.s.config; }
+    due() { return Math.max(this.s.lastSip + this.config.interval * MIN, this.s.snoozeUntil || 0); }
     get dark() { return this.s.location !== 'tisch'; }
     rssi() { return RSSI[this.s.location] || -60; }
 
@@ -67,6 +68,7 @@
       const seq = this.s.seq = ((this.s.seq || 0) + 1) & 0xffff;
       this.s.fill -= amount;
       this.s.lastSip = t;
+      this.s.snoozeUntil = 0;
       const wasAlert = this.alert;
       this.alert = false;
       if (this.connected) {
@@ -94,6 +96,13 @@
       this.s.location = loc;
       this.log('sys', loc === 'tisch' ? 'Lichtsensor hell · Flasche steht frei' : 'Lichtsensor dunkel · Flasche in der Tasche, LED aus');
       this.notifyStatus();
+      this.changed();
+    }
+    charge() {
+      this.s.battery = 100;
+      this.s.batteryF = 100;
+      this.log('sys', 'Ladekabel angeschlossen · Akku 100 %');
+      this.notifyBattery();
       this.changed();
     }
     setRadio(on) {
@@ -147,8 +156,14 @@
           text = 'Befehl · Flasche finden (LED blinkt blau)';
         } else if (d.cmd === P.CMD.RESET_TIMER) {
           this.s.lastSip = FU.clock.now();
+          this.s.snoozeUntil = 0;
           if (this.alert) { this.alert = false; setTimeout(() => this.notifyStatus(), 0); }
           text = 'Befehl · Timer zurücksetzen (manuell getrunken)';
+        } else if (d.cmd === P.CMD.SNOOZE) {
+          const min = d.arg || 10;
+          this.s.snoozeUntil = FU.clock.now() + min * MIN;
+          if (this.alert) { this.alert = false; setTimeout(() => this.notifyStatus(), 0); }
+          text = 'Befehl · später erinnern (' + min + ' min)';
         }
       } else if (name === 'time') {
         text = 'Uhrzeit synchronisiert · ' + FU.fmt.time(d.t);
@@ -172,7 +187,7 @@
       // 30-Minuten-Timer
       const c = this.config;
       const quiet = c.quiet && FU.util.isQuiet(now, c.quietStart, c.quietEnd);
-      const should = c.enabled && !quiet && now >= s.lastSip + c.interval * MIN;
+      const should = c.enabled && !quiet && now >= this.due();
       if (should !== this.alert) {
         this.alert = should;
         if (should) {

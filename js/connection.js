@@ -14,7 +14,7 @@
     syncTime(t) { return this.write('time', P.encode.time(t)); }
     writeConfig(c) { return this.write('config', P.encode.config(c)); }
     writeLed(bars) { return this.write('led', P.encode.led(bars)); }
-    command(cmd) { return this.write('control', P.encode.control(cmd)); }
+    command(cmd, arg) { return this.write('control', P.encode.control(cmd, arg)); }
   }
 
   /* ---------------- Echte Flasche ---------------- */

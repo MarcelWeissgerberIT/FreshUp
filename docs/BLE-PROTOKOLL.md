@@ -20,7 +20,7 @@ Definiert in [`js/protocol.js`](../js/protocol.js). Alle Mehrbyte-Werte sind Lit
 | Status | `6f1e0004-8c3b-4f2a-9d65-3a7b2c1e5f00` | Flasche → App (notify, read) | `uint8` Flags: Bit 0 Erinnerung aktiv, Bit 1 Deckel offen, Bit 2 dunkel (in der Tasche) |
 | Einstellungen | `6f1e0005-8c3b-4f2a-9d65-3a7b2c1e5f00` | App → Flasche (write) | `uint8` Intervall in Minuten · `uint8` Flags (Bit 0 Erinnerung an, Bit 1 rotes Licht an, Bit 2 Ruhezeit an) · `uint8` Ruhezeit-Beginn (Stunde) · `uint8` Ruhezeit-Ende (Stunde) · `uint8` LED-Helligkeit in % |
 | LED-Fortschritt | `6f1e0006-8c3b-4f2a-9d65-3a7b2c1e5f00` | App → Flasche (write) | `uint8` Anzahl blauer Balken 0–4 (je 25 % des Tagesziels) |
-| Befehl | `6f1e0007-8c3b-4f2a-9d65-3a7b2c1e5f00` | App → Flasche (write) | `uint8` `0x01` Flasche finden (LED blinkt blau), `0x02` Timer zurücksetzen (manuell getrunken) |
+| Befehl | `6f1e0007-8c3b-4f2a-9d65-3a7b2c1e5f00` | App → Flasche (write) | `uint8` `0x01` Flasche finden (LED blinkt blau), `0x02` Timer zurücksetzen (manuell getrunken), `0x03` später erinnern + `uint8` Minuten (z. B. `03 0a` = 10 min) |
 | Uhrzeit | `6f1e0008-8c3b-4f2a-9d65-3a7b2c1e5f00` | App → Flasche (write) | `uint32` Unix-Sekunden |
 
 Zusätzlich bietet die Flasche den Standard-**Battery Service** (`0x180F`, Merkmal `0x2A19`, `uint8` Prozent).
@@ -36,6 +36,8 @@ Zusätzlich bietet die Flasche den Standard-**Battery Service** (`0x180F`, Merkm
    Status-Bit „Erinnerung aktiv“ und blinkt rot – aber nur, wenn sie hell steht (Lichtsensor).
    In der Tasche bleibt die LED aus, dann erinnert die App per Mitteilung.
 5. Nach jedem Schluck berechnet die App den Tagesfortschritt und schreibt die Balkenzahl zurück.
+6. Tippt man in der App auf „In 10 Min. erinnern“, sendet sie `03 0a`. Die Flasche hört auf zu
+   blinken und meldet sich frühestens nach 10 Minuten wieder.
 
 ## Beispiel
 

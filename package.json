@@ -1,0 +1,14 @@
+{
+  "name": "fresh-up",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Fresh Up – App zur smarten Trinkflasche (PWA) mit simulierter Flasche",
+  "scripts": {
+    "build": "esbuild src/bottle3d.js --bundle --minify --format=iife --target=es2020 --legal-comments=eof --outfile=js/bottle3d.js",
+    "start": "npx serve ."
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "three": "0.186.1"
+  }
+}

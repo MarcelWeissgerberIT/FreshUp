@@ -15,7 +15,7 @@
     status: uuid('0004'),  // notify/read · uint8 Flags: bit0 Erinnerung aktiv, bit1 Deckel offen, bit2 dunkel (Tasche)
     config: uuid('0005'),  // write       · uint8 Intervall, uint8 Flags, uint8 Ruhe-Start, uint8 Ruhe-Ende, uint8 Helligkeit
     led: uuid('0006'),     // write       · uint8 Fortschrittsbalken 0–4
-    control: uuid('0007'), // write       · uint8 Befehl (0x01 finden, 0x02 Timer zurücksetzen)
+    control: uuid('0007'), // write       · uint8 Befehl (0x01 finden, 0x02 Timer zurücksetzen, 0x03 später erinnern + uint8 Minuten)
     time: uuid('0008')     // write       · uint32 Unix-Sekunden
   };
   const CHAR_NAME = {};
@@ -26,7 +26,7 @@
 
   const STATUS = { ALERT: 1, LID: 2, DARK: 4 };
   const CFG = { ENABLED: 1, LIGHT: 2, QUIET: 4 };
-  const CMD = { FIND: 0x01, RESET_TIMER: 0x02 };
+  const CMD = { FIND: 0x01, RESET_TIMER: 0x02, SNOOZE: 0x03 };
 
   function view(bytes) {
     const b = bytes instanceof DataView ? bytes : new DataView(bytes.buffer || bytes, bytes.byteOffset || 0, bytes.byteLength);
@@ -48,7 +48,7 @@
       return new Uint8Array([c.interval, flags, c.quietStart ?? 22, c.quietEnd ?? 7, c.brightness]);
     },
     led(bars) { return new Uint8Array([Math.max(0, Math.min(4, bars))]); },
-    control(cmd) { return new Uint8Array([cmd]); },
+    control(cmd, arg) { return new Uint8Array(arg == null ? [cmd] : [cmd, arg]); },
     time(t) { const d = new DataView(new ArrayBuffer(4)); d.setUint32(0, Math.floor(t / 1000), true); return new Uint8Array(d.buffer); },
     battery(pct) { return new Uint8Array([Math.round(pct)]); }
   };
@@ -62,7 +62,7 @@
       return { interval: d.getUint8(0), enabled: !!(f & CFG.ENABLED), light: !!(f & CFG.LIGHT), quiet: !!(f & CFG.QUIET), quietStart: d.getUint8(2), quietEnd: d.getUint8(3), brightness: d.getUint8(4) };
     },
     led(b) { return { bars: view(b).getUint8(0) }; },
-    control(b) { return { cmd: view(b).getUint8(0) }; },
+    control(b) { const d = view(b); return { cmd: d.getUint8(0), arg: d.byteLength > 1 ? d.getUint8(1) : null }; },
     time(b) { return { t: view(b).getUint32(0, true) * 1000 }; },
     battery(b) { return { pct: view(b).getUint8(0) }; }
   };
