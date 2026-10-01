@@ -68,9 +68,8 @@ assets/img/             Produktbilder, KI-generiert mit OpenArt (Nano Banana Pro
 
 ## Deployment
 
-Jeder Push auf `main` oder `claude/magical-pascal-tj8pjg` veröffentlicht die Seite über
-GitHub Actions auf GitHub Pages (`.github/workflows/pages.yml`). Einmalig nötig:
-**Settings → Pages → Build and deployment → Source: GitHub Actions**.
+Jeder Push auf `main` veröffentlicht die Seite über GitHub Actions auf GitHub Pages
+(`.github/workflows/pages.yml`). Die Umgebung `github-pages` erlaubt Deployments nur von `main`.
 
 ---
 
